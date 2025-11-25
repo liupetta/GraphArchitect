@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Floor, GraphNode, GraphEdge, NodeType, FLOOR_HEIGHT } from '../types';
 
 interface BuildingViewer3DProps {
@@ -36,6 +36,8 @@ const getNodeStroke = (type: NodeType) => {
 };
 
 export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, nodes, edges }) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+
   // View State
   const [angle, setAngle] = useState(45); // Rotation around Y axis
   const [tilt, setTilt] = useState(0.5);  // Camera tilt (0 to 1)
@@ -79,23 +81,17 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
         // Nodes on this floor
         const floorNodes = nodes.filter(n => {
              // Check if node belongs primarily to this floor level
-             // Simple check: middle of node Z is within floor range
              const midZ = (n.boundingBox.z1 + n.boundingBox.z2) / 2;
              return midZ >= zBase && midZ < zBase + FLOOR_HEIGHT;
         });
 
-        // Edges on this floor (both nodes on this floor)
-        // or edges connecting TO this floor from below?
-        // We'll render edges associated with the 'source' if both on same floor,
-        // or just render all edges in a final pass to ensure visibility?
-        // Let's render edges in the layer of their highest node to avoid occlusion by the floor image.
+        // Edges on this floor
         const floorEdges = edges.filter(e => {
             const source = nodes.find(n => n.id === e.source);
             const target = nodes.find(n => n.id === e.target);
             if (!source || !target) return false;
             
             const maxZ = Math.max(source.boundingBox.z1, target.boundingBox.z1);
-            // Belongs to this layer if the highest point is on this floor
             return maxZ >= zBase && maxZ < zBase + FLOOR_HEIGHT;
         });
 
@@ -109,29 +105,16 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
   }, [floors, nodes, edges]);
 
   // Calculate SVG Matrix for Image Projection
-  // We need to map (0,0) -> p0, (w,0) -> p1, (0,h) -> p2
   const getFloorTransform = (floor: Floor, z: number) => {
      const rad = (angle * Math.PI) / 180;
      const cos = Math.cos(rad);
      const sin = Math.sin(rad);
      const zDisplay = z * separation;
      
-     // Affine Transform Coefficients
-     // x' = a*x + c*y + e
-     // y' = b*x + d*y + f
-     
-     // Based on projection logic:
-     // rx = (x - cx)cos - (y - cy)sin
-     // ry = ((x - cx)sin + (y - cy)cos) * tilt - zDisplay
-     
-     // Expand X:
-     // x_screen = x(cos) + y(-sin) + (-cx*cos + cy*sin)
      const a = cos;
      const c = -sin;
      const e = -center.x * cos + center.y * sin;
      
-     // Expand Y:
-     // y_screen = x(sin*tilt) + y(cos*tilt) + ((-cx*sin - cy*cos)*tilt - zDisplay)
      const b = sin * tilt;
      const d = cos * tilt;
      const f = (-center.x * sin - center.y * cos) * tilt - zDisplay;
@@ -139,68 +122,115 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
      return `matrix(${a}, ${b}, ${c}, ${d}, ${e}, ${f})`;
   };
 
+  const handleExportImage = () => {
+    if (!svgRef.current) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgRef.current);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+
+    // Set high resolution for export
+    canvas.width = 2000;
+    canvas.height = 2000;
+
+    // Load SVG into image
+    img.setAttribute("src", "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgData))));
+
+    img.onload = () => {
+      if (ctx) {
+          // Fill white background for PNG
+          ctx.fillStyle = "white";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Draw image centered-ish (the viewBox is -1000 -1000 2000 2000)
+          // We map the 2000x2000 viewBox directly to 2000x2000 canvas
+          ctx.drawImage(img, 0, 0, 2000, 2000);
+
+          const pngUrl = canvas.toDataURL("image/png");
+          const downloadLink = document.createElement("a");
+          downloadLink.href = pngUrl;
+          downloadLink.download = "building_3d_view.png";
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+      }
+    };
+  };
+
   return (
-    <div className="w-full h-full relative bg-gray-900 overflow-hidden flex flex-col items-center justify-center">
+    <div className="w-full h-full relative bg-white overflow-hidden flex flex-col items-center justify-center">
       
       {/* Controls Overlay */}
-      <div className="absolute top-4 left-4 bg-gray-800/80 p-4 rounded text-white text-sm z-10 backdrop-blur border border-gray-700 w-64">
-        <h3 className="font-bold mb-3 border-b border-gray-600 pb-1">3D Controls</h3>
+      <div className="absolute top-4 left-4 bg-white/90 p-4 rounded text-gray-800 text-sm z-10 backdrop-blur-md border border-gray-200 w-64 shadow-xl">
+        <h3 className="font-bold mb-3 border-b border-gray-200 pb-1 text-gray-700">3D Controls</h3>
         
         <div className="mb-2">
-            <label className="block text-xs text-gray-400">Rotation</label>
+            <label className="block text-xs text-gray-500 font-medium">Rotation</label>
             <input 
                 type="range" min="0" max="360" value={angle} 
                 onChange={e => setAngle(Number(e.target.value))}
-                className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
         </div>
 
         <div className="mb-2">
-            <label className="block text-xs text-gray-400">Tilt</label>
+            <label className="block text-xs text-gray-500 font-medium">Tilt</label>
             <input 
                 type="range" min="0.1" max="1" step="0.05" value={tilt} 
                 onChange={e => setTilt(Number(e.target.value))}
-                className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
         </div>
 
         <div className="mb-2">
-            <label className="block text-xs text-gray-400">Zoom</label>
+            <label className="block text-xs text-gray-500 font-medium">Zoom</label>
             <input 
                 type="range" min="0.1" max="2" step="0.1" value={zoom} 
                 onChange={e => setZoom(Number(e.target.value))}
-                className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
         </div>
 
         <div className="mb-2">
-            <label className="block text-xs text-gray-400">Floor Separation</label>
+            <label className="block text-xs text-gray-500 font-medium">Floor Separation</label>
             <input 
                 type="range" min="0" max="5" step="0.1" value={separation} 
                 onChange={e => setSeparation(Number(e.target.value))}
-                className="w-full h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
             />
         </div>
 
-        <div className="mt-4 text-xs text-gray-500">
+        <button 
+            onClick={handleExportImage}
+            className="mt-3 w-full py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-xs font-bold flex items-center justify-center gap-2 transition-colors"
+        >
+            <span>📸</span> Snapshot PNG
+        </button>
+
+        <div className="mt-3 text-xs text-gray-400 border-t pt-2">
             {nodes.length} Nodes, {edges.length} Edges
         </div>
       </div>
 
       {/* SVG Canvas */}
-      <svg className="w-full h-full cursor-move" viewBox="-1000 -1000 2000 2000">
+      <svg 
+        ref={svgRef}
+        className="w-full h-full cursor-move" 
+        viewBox="-1000 -1000 2000 2000"
+      >
         <g transform={`scale(${zoom}) translate(0, 200)`}>
             
             {layers.map((layer) => (
                 <g key={layer.floor.id}>
                     {/* 1. Floor Image Plane */}
-                    <g transform={getFloorTransform(layer.floor, layer.z)} style={{ opacity: 0.5 }}>
+                    <g transform={getFloorTransform(layer.floor, layer.z)} style={{ opacity: 0.6 }}>
                         {/* Outline */}
                         <rect 
                             x="0" y="0" 
                             width={layer.floor.width} height={layer.floor.height} 
-                            fill="rgba(255,255,255,0.1)" 
-                            stroke="rgba(255,255,255,0.3)" strokeWidth="4" 
+                            fill="rgba(255,255,255,0.4)" 
+                            stroke="rgba(0,0,0,0.15)" strokeWidth="4" 
                         />
                         {/* Image */}
                         <image 
@@ -222,7 +252,7 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
                         const p3 = project(x1, y2, z);
                         
                         const path = `M ${p0.x} ${p0.y} L ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p3.x} ${p3.y} Z`;
-                        const color = getNodeColor(node.type, 0.6);
+                        const color = getNodeColor(node.type, 0.7);
                         const stroke = getNodeStroke(node.type);
                         
                         const centerP = project((x1+x2)/2, (y1+y2)/2, z);
@@ -230,15 +260,20 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
                         return (
                             <g key={node.id} className="hover:opacity-100 transition-opacity">
                                 <path d={path} fill={color} stroke={stroke} strokeWidth="1" />
-                                {zoom > 0.6 && (
+                                {zoom > 0.4 && (
                                     <text 
                                         x={centerP.x} 
                                         y={centerP.y} 
-                                        fill="white" 
-                                        fontSize="12" 
+                                        fill="#0f172a" 
+                                        fontSize="14"
+                                        fontWeight="bold" 
                                         textAnchor="middle" 
                                         alignmentBaseline="middle"
-                                        style={{ textShadow: '0px 1px 2px black', pointerEvents: 'none' }}
+                                        style={{ 
+                                            textShadow: '0px 0px 3px rgba(255,255,255,0.9), 0px 0px 1px white',
+                                            pointerEvents: 'none',
+                                            fontFamily: 'sans-serif'
+                                        }}
                                     >
                                         {node.label}
                                     </text>
@@ -255,8 +290,7 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
 
                         const sCx = (source.boundingBox.x1 + source.boundingBox.x2) / 2;
                         const sCy = (source.boundingBox.y1 + source.boundingBox.y2) / 2;
-                        const sCz = layer.z; // Flat connection at floor level? Or Use real Z?
-                        // Use real Z for inter-floor connections to look correct
+                        const sCz = layer.z; 
                         const realSCz = source.boundingBox.z1;
 
                         const tCx = (target.boundingBox.x1 + target.boundingBox.x2) / 2;
@@ -271,10 +305,10 @@ export const BuildingViewer3D: React.FC<BuildingViewer3DProps> = ({ floors, node
                                 key={edge.id}
                                 x1={p1.x} y1={p1.y}
                                 x2={p2.x} y2={p2.y}
-                                stroke={edge.active ? "#F87171" : "#4B5563"} 
+                                stroke={edge.active ? "#DC2626" : "#9CA3AF"} 
                                 strokeWidth="2" 
                                 strokeDasharray={edge.active ? "" : "4"}
-                                opacity="0.9"
+                                opacity="0.8"
                             />
                         );
                     })}
