@@ -1,6 +1,6 @@
 
 import React, { useRef, useState } from 'react';
-import { Floor, GraphNode, GraphEdge, ToolMode, NodeType } from '../types';
+import { Floor, GraphNode, GraphEdge, ToolMode, NodeType, FLOOR_HEIGHT } from '../types';
 
 interface GraphCanvasProps {
   floor: Floor;
@@ -53,9 +53,13 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   const [mousePos, setMousePos] = useState<{x: number, y: number} | null>(null);
 
   // Filter nodes/edges for current floor
-  const activeNodes = nodes.filter(
-    (n) => n.floorLevels.includes(floor.level) || (n.boundingBox.z1 <= floor.level && n.boundingBox.z2 >= floor.level)
-  );
+  const activeNodes = nodes.filter((n) => {
+    const floorMinZ = floor.level * FLOOR_HEIGHT;
+    const floorMaxZ = (floor.level + 1) * FLOOR_HEIGHT;
+    // Check overlap: box.z1 < floorMax && box.z2 > floorMin
+    const zOverlap = n.boundingBox.z1 < floorMaxZ && n.boundingBox.z2 > floorMinZ;
+    return n.floorLevels.includes(floor.level) || zOverlap;
+  });
 
   const activeEdges = edges.filter((e) => {
     const source = activeNodes.find(n => n.id === e.source);
@@ -72,6 +76,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       case NodeType.Outdoor: return 'rgba(107, 114, 128, 0.4)'; 
       case NodeType.Office: return 'rgba(139, 92, 246, 0.4)'; 
       case NodeType.Service: return 'rgba(236, 72, 153, 0.4)';
+      case NodeType.Bathroom: return 'rgba(6, 182, 212, 0.4)';
       default: return 'rgba(200, 200, 200, 0.4)';
     }
   };
@@ -81,6 +86,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
       case NodeType.Classroom: return '#2563EB';
       case NodeType.Corridor: return '#059669';
       case NodeType.Stairs: return '#D97706';
+      case NodeType.Bathroom: return '#0891B2';
       default: return '#4B5563';
     }
   };
@@ -267,8 +273,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
             y1: tempNodeBox.y,
             x2: tempNodeBox.x + tempNodeBox.w,
             y2: tempNodeBox.y + tempNodeBox.h,
-            z1: floor.level,
-            z2: floor.level
+            z1: floor.level * FLOOR_HEIGHT,
+            z2: (floor.level + 1) * FLOOR_HEIGHT
           }
         };
         onAddNode(newNode);

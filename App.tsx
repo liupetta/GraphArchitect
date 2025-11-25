@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Floor, GraphNode, GraphEdge, ToolMode, NodeType } from './types';
+import { Floor, GraphNode, GraphEdge, ToolMode, NodeType, FLOOR_HEIGHT } from './types';
 import { FloorManager } from './components/FloorManager';
 import { PropertyEditor } from './components/PropertyEditor';
 import { GraphCanvas } from './components/GraphCanvas';
+import { BuildingViewer3D } from './components/BuildingViewer3D';
 import { extractGraphFromImage } from './services/geminiService';
 import { preprocessImageForAI } from './services/imageProcessing';
 
@@ -59,6 +60,9 @@ const App: React.FC = () => {
   const [toolMode, setToolMode] = useState<ToolMode>('select');
   const [isProcessing, setIsProcessing] = useState(false);
   const [useEnhancement, setUseEnhancement] = useState(true); // Image processing toggle
+  
+  // View Mode: 'editor' or '3d'
+  const [viewMode, setViewMode] = useState<'editor' | '3d'>('editor');
 
   // --- Derived State ---
   const activeFloor = floors.find(f => f.id === activeFloorId);
@@ -158,10 +162,7 @@ const App: React.FC = () => {
              ...next[nodeIndex],
              boundingBox: {
                ...next[nodeIndex].boundingBox,
-               x1: d.x, // Assuming x/y in delta is the NEW x1/y1 or similar? 
-                        // Actually cleaner to pass raw deltas or new boxes. 
-                        // Let's assume the Canvas handles calculation and calls handleNodeUpdate for single
-                        // OR we implement a bulk update method.
+               x1: d.x, 
              }
            };
          }
@@ -284,7 +285,8 @@ const App: React.FC = () => {
           else if (tLower.includes('stair')) type = NodeType.Stairs;
           else if (tLower.includes('out')) type = NodeType.Outdoor;
           else if (tLower.includes('office')) type = NodeType.Office;
-          else if (tLower.includes('service') || tLower.includes('bath') || tLower.includes('wc')) type = NodeType.Service;
+          else if (tLower.includes('bath') || tLower.includes('wc') || tLower.includes('toilet') || tLower.includes('restroom')) type = NodeType.Bathroom;
+          else if (tLower.includes('service')) type = NodeType.Service;
 
           newNodesList.push({
             id,
@@ -295,7 +297,8 @@ const App: React.FC = () => {
             floorLevels: [activeFloor.level],
             boundingBox: {
               x1: xmin, y1: ymin, x2: xmax, y2: ymax,
-              z1: activeFloor.level, z2: activeFloor.level
+              z1: activeFloor.level * FLOOR_HEIGHT, 
+              z2: (activeFloor.level + 1) * FLOOR_HEIGHT
             }
           });
         });
@@ -404,73 +407,98 @@ const App: React.FC = () => {
           <h1 className="font-bold text-xl tracking-tight">Graph<span className="text-indigo-400">Architect</span></h1>
           <div className="h-6 w-px bg-gray-700 mx-2"></div>
           
-          {/* Tools */}
+          {/* View Toggle */}
           <div className="flex bg-gray-800 rounded p-1 gap-1">
-            <button 
-                onClick={() => setToolMode('select')}
-                title="Select (V)"
-                className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'select' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-            >
-                Select
-            </button>
-            <button 
-                onClick={() => setToolMode('add-node')}
-                title="Add Node (N)"
-                className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'add-node' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-            >
-                Add Node
-            </button>
-            <button 
-                onClick={() => setToolMode('add-edge')}
-                title="Add Edge (E)"
-                className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'add-edge' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
-            >
-                Add Edge
-            </button>
+             <button
+               onClick={() => setViewMode('editor')}
+               className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${viewMode === 'editor' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+             >
+               2D Editor
+             </button>
+             <button
+               onClick={() => setViewMode('3d')}
+               className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${viewMode === '3d' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+             >
+               3D View
+             </button>
           </div>
+          
+          {viewMode === 'editor' && (
+            <>
+              <div className="h-6 w-px bg-gray-700 mx-2"></div>
+              {/* Tools */}
+              <div className="flex bg-gray-800 rounded p-1 gap-1">
+                <button 
+                    onClick={() => setToolMode('select')}
+                    title="Select (V)"
+                    className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'select' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                    Select
+                </button>
+                <button 
+                    onClick={() => setToolMode('add-node')}
+                    title="Add Node (N)"
+                    className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'add-node' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                    Add Node
+                </button>
+                <button 
+                    onClick={() => setToolMode('add-edge')}
+                    title="Add Edge (E)"
+                    className={`px-3 py-1 text-xs rounded uppercase font-bold transition-colors ${toolMode === 'add-edge' ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+                >
+                    Add Edge
+                </button>
+              </div>
 
-          {/* Undo/Redo */}
-          <div className="flex items-center gap-1 ml-2">
-             <button onClick={handleUndo} disabled={historyIndex <= 0} className={`p-1.5 rounded hover:bg-gray-700 ${historyIndex <= 0 ? 'opacity-30 cursor-not-allowed' : ''}`} title="Undo (Ctrl+Z)">
-               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
-             </button>
-             <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className={`p-1.5 rounded hover:bg-gray-700 ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`} title="Redo (Ctrl+Y)">
-               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"></path></svg>
-             </button>
-          </div>
+              {/* Undo/Redo */}
+              <div className="flex items-center gap-1 ml-2">
+                 <button onClick={handleUndo} disabled={historyIndex <= 0} className={`p-1.5 rounded hover:bg-gray-700 ${historyIndex <= 0 ? 'opacity-30 cursor-not-allowed' : ''}`} title="Undo (Ctrl+Z)">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
+                 </button>
+                 <button onClick={handleRedo} disabled={historyIndex >= history.length - 1} className={`p-1.5 rounded hover:bg-gray-700 ${historyIndex >= history.length - 1 ? 'opacity-30 cursor-not-allowed' : ''}`} title="Redo (Ctrl+Y)">
+                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 10h-10a8 8 0 00-8 8v2M21 10l-6 6m6-6l-6-6"></path></svg>
+                 </button>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
-           <div className="flex items-center mr-2 gap-1">
-              <input 
-                type="checkbox" 
-                id="enhance" 
-                checked={useEnhancement} 
-                onChange={(e) => setUseEnhancement(e.target.checked)}
-                className="rounded text-indigo-500 bg-gray-700 border-gray-600"
-              />
-              <label htmlFor="enhance" className="text-xs text-gray-300 cursor-pointer">Enhance Walls</label>
-           </div>
+           {viewMode === 'editor' && (
+               <div className="flex items-center mr-2 gap-1">
+                  <input 
+                    type="checkbox" 
+                    id="enhance" 
+                    checked={useEnhancement} 
+                    onChange={(e) => setUseEnhancement(e.target.checked)}
+                    className="rounded text-indigo-500 bg-gray-700 border-gray-600"
+                  />
+                  <label htmlFor="enhance" className="text-xs text-gray-300 cursor-pointer">Enhance Walls</label>
+               </div>
+           )}
            
-           <button 
-             onClick={handleAutoExtract}
-             disabled={isProcessing || !activeFloor}
-             className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-all ${isProcessing ? 'bg-gray-600 cursor-wait' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-lg shadow-indigo-500/30'}`}
-           >
-             {isProcessing ? (
-               <>
-                 <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                 </svg>
-                 <span>AI Processing...</span>
-               </>
-             ) : (
-               <>
-                 <span>✨ AI Extract</span>
-               </>
-             )}
-           </button>
+           {viewMode === 'editor' && (
+             <button 
+               onClick={handleAutoExtract}
+               disabled={isProcessing || !activeFloor}
+               className={`flex items-center gap-2 px-4 py-1.5 rounded text-sm font-medium transition-all ${isProcessing ? 'bg-gray-600 cursor-wait' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 shadow-lg shadow-indigo-500/30'}`}
+             >
+               {isProcessing ? (
+                 <>
+                   <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                   </svg>
+                   <span>AI Processing...</span>
+                 </>
+               ) : (
+                 <>
+                   <span>✨ AI Extract</span>
+                 </>
+               )}
+             </button>
+           )}
            <div className="h-6 w-px bg-gray-700 mx-2"></div>
            
            <label className="cursor-pointer px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-sm border border-gray-700 flex items-center gap-1 hover:text-white text-gray-300 transition-colors">
@@ -487,75 +515,82 @@ const App: React.FC = () => {
       {/* Main Workspace */}
       <div className="flex flex-1 overflow-hidden">
         
-        {/* Left Sidebar: Floor Manager */}
-        <div className="w-64 bg-white border-r border-gray-200 flex flex-col z-20 overflow-y-auto">
-            <div className="p-4">
-                <FloorManager 
-                    floors={floors}
-                    activeFloorId={activeFloorId}
-                    onAddFloor={handleAddFloor}
-                    onSelectFloor={setActiveFloorId}
-                    onDeleteFloor={(id) => {
-                        setFloors(f => f.filter(x => x.id !== id));
-                        if(activeFloorId === id) setActiveFloorId(null);
-                    }}
-                />
-                
-                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100 text-sm text-blue-800">
-                    <h4 className="font-bold mb-1">Shortcuts</h4>
-                    <ul className="list-disc pl-4 space-y-1 text-xs">
-                        <li><strong>Del / Backspace</strong>: Delete Selected</li>
-                        <li><strong>Ctrl + Z</strong>: Undo</li>
-                        <li><strong>Ctrl + Shift + Z</strong>: Redo</li>
-                    </ul>
-                    <h4 className="font-bold mb-1 mt-3">Mouse Actions</h4>
-                    <ul className="list-disc pl-4 space-y-1 text-xs">
-                        <li><strong>Shift + Click</strong>: Add to selection.</li>
-                        <li><strong>Drag Background</strong>: Box selection.</li>
-                    </ul>
+        {viewMode === 'editor' && (
+            <div className="w-64 bg-white border-r border-gray-200 flex flex-col z-20 overflow-y-auto">
+                <div className="p-4">
+                    <FloorManager 
+                        floors={floors}
+                        activeFloorId={activeFloorId}
+                        onAddFloor={handleAddFloor}
+                        onSelectFloor={setActiveFloorId}
+                        onDeleteFloor={(id) => {
+                            setFloors(f => f.filter(x => x.id !== id));
+                            if(activeFloorId === id) setActiveFloorId(null);
+                        }}
+                    />
+                    
+                    <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-100 text-sm text-blue-800">
+                        <h4 className="font-bold mb-1">Shortcuts</h4>
+                        <ul className="list-disc pl-4 space-y-1 text-xs">
+                            <li><strong>Del / Backspace</strong>: Delete Selected</li>
+                            <li><strong>Ctrl + Z</strong>: Undo</li>
+                            <li><strong>Ctrl + Shift + Z</strong>: Redo</li>
+                        </ul>
+                        <h4 className="font-bold mb-1 mt-3">Mouse Actions</h4>
+                        <ul className="list-disc pl-4 space-y-1 text-xs">
+                            <li><strong>Shift + Click</strong>: Add to selection.</li>
+                            <li><strong>Drag Background</strong>: Box selection.</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
-        </div>
+        )}
 
-        {/* Center: Canvas */}
+        {/* Center: Canvas or 3D View */}
         <div className="flex-1 relative bg-gray-100 overflow-hidden">
-            {activeFloor ? (
-                <GraphCanvas 
-                    floor={activeFloor}
-                    nodes={nodes}
-                    edges={edges}
-                    toolMode={toolMode}
-                    selectedNodeIds={selectedNodeIds}
-                    selectedEdgeId={selectedEdgeId}
-                    onSelectNodes={setSelectedNodeIds}
-                    onSelectEdge={setSelectedEdgeId}
-                    onUpdateNode={handleNodeUpdate}
-                    onBulkUpdateNode={handleBulkNodeUpdate}
-                    onInteractionEnd={handleCommit}
-                    onAddNode={handleAddNode}
-                    onAddEdge={handleAddEdge}
-                />
+            {viewMode === 'editor' ? (
+                activeFloor ? (
+                    <GraphCanvas 
+                        floor={activeFloor}
+                        nodes={nodes}
+                        edges={edges}
+                        toolMode={toolMode}
+                        selectedNodeIds={selectedNodeIds}
+                        selectedEdgeId={selectedEdgeId}
+                        onSelectNodes={setSelectedNodeIds}
+                        onSelectEdge={setSelectedEdgeId}
+                        onUpdateNode={handleNodeUpdate}
+                        onBulkUpdateNode={handleBulkNodeUpdate}
+                        onInteractionEnd={handleCommit}
+                        onAddNode={handleAddNode}
+                        onAddEdge={handleAddEdge}
+                    />
+                ) : (
+                    <div className="flex items-center justify-center h-full text-gray-400 flex-col">
+                        <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        <p>Select or add a floor to begin.</p>
+                    </div>
+                )
             ) : (
-                <div className="flex items-center justify-center h-full text-gray-400 flex-col">
-                    <svg className="w-16 h-16 mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                    <p>Select or add a floor to begin.</p>
-                </div>
+                <BuildingViewer3D floors={floors} nodes={nodes} edges={edges} />
             )}
         </div>
 
-        {/* Right Sidebar: Properties */}
-        <div className="w-80 bg-white border-l border-gray-200 z-20">
-             <PropertyEditor 
-                selectedNode={primarySelectedNode}
-                totalSelectedNodes={selectedNodeIds.size}
-                selectedEdge={selectedEdge}
-                onUpdateNode={handleNodeUpdate}
-                onUpdateEdge={handleEdgeUpdate}
-                onCommit={handleCommit}
-                onDeleteNode={handleDeleteSelectedNodes} // Renamed prop usage
-                onDeleteEdge={handleDeleteEdge}
-             />
-        </div>
+        {/* Right Sidebar: Properties (only in editor mode) */}
+        {viewMode === 'editor' && (
+            <div className="w-80 bg-white border-l border-gray-200 z-20">
+                 <PropertyEditor 
+                    selectedNode={primarySelectedNode}
+                    totalSelectedNodes={selectedNodeIds.size}
+                    selectedEdge={selectedEdge}
+                    onUpdateNode={handleNodeUpdate}
+                    onUpdateEdge={handleEdgeUpdate}
+                    onCommit={handleCommit}
+                    onDeleteNode={handleDeleteSelectedNodes} // Renamed prop usage
+                    onDeleteEdge={handleDeleteEdge}
+                 />
+            </div>
+        )}
 
       </div>
     </div>

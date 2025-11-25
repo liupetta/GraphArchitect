@@ -1,5 +1,5 @@
 {
-  "name": "Copy of Building Graph Architect",
+  "name": "Building Graph Architect",
   "description": "A tool to extract, edit, and manage labeled graphs from building floor plan images using Gemini AI. Supports multi-floor buildings, 3D bounding boxes, and JSON/CSV export.",
   "requestFramePermissions": []
 }

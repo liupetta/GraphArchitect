@@ -1,19 +1,23 @@
+
+export const FLOOR_HEIGHT = 300;
+
 export enum NodeType {
   Classroom = 'classroom',
   Corridor = 'corridor',
   Stairs = 'stairs',
   Outdoor = 'outdoor',
   Office = 'office',
-  Service = 'service'
+  Service = 'service',
+  Bathroom = 'bathroom'
 }
 
 export interface BoundingBox3D {
   x1: number; // pixels relative to image width
   y1: number; // pixels relative to image height
-  z1: number; // Start floor index
+  z1: number; // Start Z
   x2: number;
   y2: number;
-  z2: number; // End floor index (inclusive)
+  z2: number; // End Z (inclusive-ish)
 }
 
 export interface GraphNode {
@@ -38,7 +42,7 @@ export interface GraphEdge {
 
 export interface Floor {
   id: string;
-  level: number; // z-index
+  level: number; // z-index index (0, 1, 2...)
   name: string;
   imageUrl: string;
   width: number; // Original image width
