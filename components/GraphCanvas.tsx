@@ -347,170 +347,178 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   );
 
   return (
-    <div className="relative w-full h-full overflow-auto bg-gray-200 border border-gray-300 flex justify-center">
+    <div className="relative w-full h-full overflow-auto bg-gray-200 border border-gray-300 flex">
+      {/* Wrapper to handle Scroll Area & Centering (m-auto) & prevent Squash (shrink-0) */}
       <div 
-        ref={containerRef}
-        className="relative bg-white shadow-lg origin-top-left"
+        className="relative shrink-0 m-auto bg-white shadow-lg"
         style={{ 
-            width: floor.width, 
-            height: floor.height,
-            transform: `scale(${scale})`,
-            transformOrigin: '0 0',
-            marginBottom: '500px',
-            marginRight: '500px',
-            cursor: toolMode === 'add-edge' ? 'crosshair' : 'default'
+            width: floor.width * scale, 
+            height: floor.height * scale,
         }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
       >
-        {/* Background Image */}
-        <img 
-            src={floor.imageUrl} 
-            alt="Floor Plan" 
-            className="absolute top-0 left-0 select-none pointer-events-none"
-            style={{ width: '100%', height: '100%' }}
-        />
+        {/* Scaled Content Container */}
+        <div 
+            ref={containerRef}
+            className="origin-top-left relative bg-white"
+            style={{ 
+                width: floor.width, 
+                height: floor.height,
+                transform: `scale(${scale})`,
+                cursor: toolMode === 'add-edge' ? 'crosshair' : 'default'
+            }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+        >
+            {/* Background Image */}
+            <img 
+                src={floor.imageUrl} 
+                alt="Floor Plan" 
+                className="absolute top-0 left-0 select-none pointer-events-none"
+                style={{ width: '100%', height: '100%' }}
+                draggable={false}
+            />
 
-        {/* SVG Overlay */}
-        <svg className="absolute top-0 left-0 w-full h-full overflow-visible pointer-events-none">
-            <defs>
-                 <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                    <polygon points="0 0, 10 3.5, 0 7" fill="#374151" />
-                 </marker>
-            </defs>
+            {/* SVG Overlay */}
+            <svg className="absolute top-0 left-0 w-full h-full overflow-visible pointer-events-none">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#374151" />
+                    </marker>
+                </defs>
 
-            {/* Edges */}
-            {activeEdges.map(edge => {
-                const source = activeNodes.find(n => n.id === edge.source)!;
-                const target = activeNodes.find(n => n.id === edge.target)!;
-                const p1 = getNodeCenter(source);
-                const p2 = getNodeCenter(target);
-                const isSelected = edge.id === selectedEdgeId;
+                {/* Edges */}
+                {activeEdges.map(edge => {
+                    const source = activeNodes.find(n => n.id === edge.source)!;
+                    const target = activeNodes.find(n => n.id === edge.target)!;
+                    const p1 = getNodeCenter(source);
+                    const p2 = getNodeCenter(target);
+                    const isSelected = edge.id === selectedEdgeId;
 
-                return (
-                    <g 
-                        key={edge.id} 
-                        onClick={(e) => {
-                            e.stopPropagation(); 
-                            if(toolMode === 'select') onSelectEdge(edge.id);
-                        }}
-                        className="cursor-pointer pointer-events-auto"
-                    >
-                        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth="15" />
-                        <line 
-                            x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} 
-                            stroke={isSelected ? '#4F46E5' : (edge.active ? '#374151' : '#EF4444')} 
-                            strokeWidth={isSelected ? 4 : 2}
-                            strokeDasharray={edge.active ? '0' : '4'}
-                        />
-                        <text 
-                            x={(p1.x + p2.x)/2} 
-                            y={(p1.y + p2.y)/2} 
-                            fill="black" 
-                            fontSize="12" 
-                            stroke="white" 
-                            strokeWidth="0.5"
-                            textAnchor="middle"
-                        >
-                            {edge.traversalTime}s
-                        </text>
-                    </g>
-                );
-            })}
-
-            {/* Temporary Edge Line */}
-            {toolMode === 'add-edge' && edgeStartNodeId && mousePos && (
-                (() => {
-                    const startNode = activeNodes.find(n => n.id === edgeStartNodeId);
-                    if (!startNode) return null;
-                    const p1 = getNodeCenter(startNode);
                     return (
-                        <line 
-                            x1={p1.x} y1={p1.y} 
-                            x2={mousePos.x} y2={mousePos.y} 
-                            stroke="#6366F1" 
-                            strokeWidth="2" 
-                            strokeDasharray="5,5"
-                        />
-                    )
-                })()
-            )}
-
-            {/* Nodes */}
-            {activeNodes.map(node => {
-                const isSelected = selectedNodeIds.has(node.id);
-                const isHoverTarget = toolMode === 'add-edge' && edgeStartNodeId && edgeStartNodeId !== node.id;
-
-                return (
-                    <g key={node.id} className="pointer-events-auto">
-                        <rect
-                            x={node.boundingBox.x1}
-                            y={node.boundingBox.y1}
-                            width={node.boundingBox.x2 - node.boundingBox.x1}
-                            height={node.boundingBox.y2 - node.boundingBox.y1}
-                            fill={getNodeColor(node.type)}
-                            stroke={isSelected ? '#4F46E5' : (isHoverTarget ? '#F59E0B' : getNodeBorder(node.type))}
-                            strokeWidth={isSelected ? 3 : (isHoverTarget ? 3 : 1)}
-                            className={`${toolMode === 'add-edge' ? 'cursor-crosshair' : 'cursor-pointer'} hover:opacity-90 transition-opacity`}
-                            onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
-                        />
-                        <text
-                            x={node.boundingBox.x1 + 5}
-                            y={node.boundingBox.y1 + 15}
-                            fontSize="12"
-                            fontWeight="bold"
-                            fill="rgba(0,0,0,0.7)"
-                            className="pointer-events-none select-none"
+                        <g 
+                            key={edge.id} 
+                            onClick={(e) => {
+                                e.stopPropagation(); 
+                                if(toolMode === 'select') onSelectEdge(edge.id);
+                            }}
+                            className="cursor-pointer pointer-events-auto"
                         >
-                            {node.label}
-                        </text>
+                            <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="transparent" strokeWidth="15" />
+                            <line 
+                                x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} 
+                                stroke={isSelected ? '#4F46E5' : (edge.active ? '#374151' : '#EF4444')} 
+                                strokeWidth={isSelected ? 4 : 2}
+                                strokeDasharray={edge.active ? '0' : '4'}
+                            />
+                            <text 
+                                x={(p1.x + p2.x)/2} 
+                                y={(p1.y + p2.y)/2} 
+                                fill="black" 
+                                fontSize="12" 
+                                stroke="white" 
+                                strokeWidth="0.5"
+                                textAnchor="middle"
+                            >
+                                {edge.traversalTime}s
+                            </text>
+                        </g>
+                    );
+                })}
 
-                        {/* Resize Handles (Only if SINGLE selection) */}
-                        {isSelected && selectedNodeIds.size === 1 && toolMode === 'select' && (
-                            <>
-                                <ResizeHandleRect x={node.boundingBox.x1} y={node.boundingBox.y1} cursor="nw-resize" handle="nw" />
-                                <ResizeHandleRect x={node.boundingBox.x2} y={node.boundingBox.y1} cursor="ne-resize" handle="ne" />
-                                <ResizeHandleRect x={node.boundingBox.x1} y={node.boundingBox.y2} cursor="sw-resize" handle="sw" />
-                                <ResizeHandleRect x={node.boundingBox.x2} y={node.boundingBox.y2} cursor="se-resize" handle="se" />
-                            </>
-                        )}
-                    </g>
-                );
-            })}
+                {/* Temporary Edge Line */}
+                {toolMode === 'add-edge' && edgeStartNodeId && mousePos && (
+                    (() => {
+                        const startNode = activeNodes.find(n => n.id === edgeStartNodeId);
+                        if (!startNode) return null;
+                        const p1 = getNodeCenter(startNode);
+                        return (
+                            <line 
+                                x1={p1.x} y1={p1.y} 
+                                x2={mousePos.x} y2={mousePos.y} 
+                                stroke="#6366F1" 
+                                strokeWidth="2" 
+                                strokeDasharray="5,5"
+                            />
+                        )
+                    })()
+                )}
 
-            {/* Selection Box */}
-            {selectionBox && (
-                <rect 
-                    x={selectionBox.x}
-                    y={selectionBox.y}
-                    width={selectionBox.w}
-                    height={selectionBox.h}
-                    fill="rgba(99, 102, 241, 0.1)"
-                    stroke="#4F46E5"
-                    strokeWidth="1"
-                    strokeDasharray="4"
-                />
-            )}
+                {/* Nodes */}
+                {activeNodes.map(node => {
+                    const isSelected = selectedNodeIds.has(node.id);
+                    const isHoverTarget = toolMode === 'add-edge' && edgeStartNodeId && edgeStartNodeId !== node.id;
 
-            {/* Temporary Drawing Node */}
-            {tempNodeBox && (
-                <rect 
-                    x={tempNodeBox.x}
-                    y={tempNodeBox.y}
-                    width={tempNodeBox.w}
-                    height={tempNodeBox.h}
-                    fill="rgba(99, 102, 241, 0.2)"
-                    stroke="#4F46E5"
-                    strokeWidth="2"
-                    strokeDasharray="4"
-                />
-            )}
-        </svg>
+                    return (
+                        <g key={node.id} className="pointer-events-auto">
+                            <rect
+                                x={node.boundingBox.x1}
+                                y={node.boundingBox.y1}
+                                width={node.boundingBox.x2 - node.boundingBox.x1}
+                                height={node.boundingBox.y2 - node.boundingBox.y1}
+                                fill={getNodeColor(node.type)}
+                                stroke={isSelected ? '#4F46E5' : (isHoverTarget ? '#F59E0B' : getNodeBorder(node.type))}
+                                strokeWidth={isSelected ? 3 : (isHoverTarget ? 3 : 1)}
+                                className={`${toolMode === 'add-edge' ? 'cursor-crosshair' : 'cursor-pointer'} hover:opacity-90 transition-opacity`}
+                                onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
+                            />
+                            <text
+                                x={node.boundingBox.x1 + 5}
+                                y={node.boundingBox.y1 + 15}
+                                fontSize="12"
+                                fontWeight="bold"
+                                fill="rgba(0,0,0,0.7)"
+                                className="pointer-events-none select-none"
+                            >
+                                {node.label}
+                            </text>
+
+                            {/* Resize Handles (Only if SINGLE selection) */}
+                            {isSelected && selectedNodeIds.size === 1 && toolMode === 'select' && (
+                                <>
+                                    <ResizeHandleRect x={node.boundingBox.x1} y={node.boundingBox.y1} cursor="nw-resize" handle="nw" />
+                                    <ResizeHandleRect x={node.boundingBox.x2} y={node.boundingBox.y1} cursor="ne-resize" handle="ne" />
+                                    <ResizeHandleRect x={node.boundingBox.x1} y={node.boundingBox.y2} cursor="sw-resize" handle="sw" />
+                                    <ResizeHandleRect x={node.boundingBox.x2} y={node.boundingBox.y2} cursor="se-resize" handle="se" />
+                                </>
+                            )}
+                        </g>
+                    );
+                })}
+
+                {/* Selection Box */}
+                {selectionBox && (
+                    <rect 
+                        x={selectionBox.x}
+                        y={selectionBox.y}
+                        width={selectionBox.w}
+                        height={selectionBox.h}
+                        fill="rgba(99, 102, 241, 0.1)"
+                        stroke="#4F46E5"
+                        strokeWidth="1"
+                        strokeDasharray="4"
+                    />
+                )}
+
+                {/* Temporary Drawing Node */}
+                {tempNodeBox && (
+                    <rect 
+                        x={tempNodeBox.x}
+                        y={tempNodeBox.y}
+                        width={tempNodeBox.w}
+                        height={tempNodeBox.h}
+                        fill="rgba(99, 102, 241, 0.2)"
+                        stroke="#4F46E5"
+                        strokeWidth="2"
+                        strokeDasharray="4"
+                    />
+                )}
+            </svg>
+        </div>
       </div>
 
       {/* Zoom Controls */}
-      <div className="fixed bottom-8 right-8 flex flex-col gap-2 bg-white p-2 rounded shadow-lg z-20">
+      <div className="fixed bottom-8 right-8 flex flex-col gap-2 bg-white p-2 rounded shadow-lg z-20 border border-gray-200">
           <button onClick={() => setScale(s => Math.max(0.2, s - 0.1))} className="p-2 hover:bg-gray-100 rounded">-</button>
           <span className="text-center text-xs text-gray-500">{Math.round(scale * 100)}%</span>
           <button onClick={() => setScale(s => Math.min(3, s + 0.1))} className="p-2 hover:bg-gray-100 rounded">+</button>
